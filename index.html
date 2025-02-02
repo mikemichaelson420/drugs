@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drug Trader Game</title>
   <style>
     /* Global Styles */
@@ -32,14 +33,16 @@
       padding: 10px;
       background-color: #222;
     }
+    /* Updated Button Styles for Mobile (Bigger Buttons) */
     .button {
       background-color: #333;
       color: #A3FF00;
-      border: 1px solid #00FF00;
-      padding: 8px 12px;
-      margin: 5px;
+      border: 2px solid #00FF00;
+      padding: 15px 20px;
+      margin: 10px;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 18px;
+      border-radius: 5px;
     }
     .button:hover:not(:disabled) {
       background-color: #444;
@@ -59,9 +62,9 @@
       border: 1px solid #00FF00;
     }
     th, td {
-      padding: 8px;
+      padding: 10px;
       text-align: center;
-      font-size: 14px;
+      font-size: 16px;
     }
     /* Location Panel */
     #location-panel {
@@ -71,9 +74,8 @@
       margin-top: 10px;
       background-color: #222;
     }
-    /* Full-screen TED Call Overlay */
+    /* Full-screen TED Overlays */
     #ted-overlay, 
-    /* Full-screen TED Punishment Overlay (identical styling) */
     #ted-punishment-overlay {
       position: fixed;
       top: 0;
@@ -86,7 +88,7 @@
       z-index: 100;
       text-align: center;
       padding-top: 20%;
-      font-size: 20px;
+      font-size: 22px;
     }
     #ted-overlay .overlay-content,
     #ted-punishment-overlay .overlay-content {
@@ -155,7 +157,7 @@
     const drugs = ["mdma", "coke", "heroin", "ket", "pot", "shrooms", "lsd", "fent", "chinese cigs", "vapes", "speed", "vallies"];
 
     // ------------------ Locations ------------------
-    // (Locations still affect prices.)
+    // Locations still affect prices.
     const locations = ["Nowra", "Dapto", "Cringila", "Bellambi", "Wombarra", "Sutherland"];
     let currentLocation = locations[0];
 
@@ -223,26 +225,30 @@
       renderAll();
     }
 
-    // ------------------ TED Full-Screen Overlay ------------------
+    // ------------------ TED Full-Screen Overlays ------------------
     // TED Call Overlay
     function triggerTedOverlay() {
       const overlay = document.getElementById("ted-overlay");
       // Reset overlay to initial prompt.
-      document.querySelector("#ted-overlay .overlay-content").innerHTML = `
-        <h2>TED is Calling!</h2>
-        <p id="ted-initial-text">Do you want to answer?</p>
-        <button class="button" onclick="answerTedCall()">Answer</button>
-        <button class="button" onclick="declineTedCall()">Decline</button>
+      overlay.innerHTML = `
+        <div class="overlay-content">
+          <h2>TED is Calling!</h2>
+          <p id="ted-initial-text">Do you want to answer?</p>
+          <button class="button" onclick="answerTedCall()">Answer</button>
+          <button class="button" onclick="declineTedCall()">Decline</button>
+        </div>
       `;
       overlay.style.display = "block";
     }
     function answerTedCall() {
       const overlay = document.getElementById("ted-overlay");
       // Replace content with TED's message and a Hang Up button.
-      document.querySelector("#ted-overlay .overlay-content").innerHTML = `
-        <h2>TED is Speaking!</h2>
-        <p id="ted-message"></p>
-        <button class="button" onclick="hangUpTed()">Hang Up</button>
+      overlay.innerHTML = `
+        <div class="overlay-content">
+          <h2>TED is Speaking!</h2>
+          <p id="ted-message"></p>
+          <button class="button" onclick="hangUpTed()">Hang Up</button>
+        </div>
       `;
       const tedMessages = [
         "Hey, are you building a boat?",
@@ -260,9 +266,15 @@
       overlay.style.display = "none";
       const loss = Math.floor(money * 0.2);
       money -= loss;
-      // Instead of adding a message to the game messages panel, show a full-screen punishment overlay.
+      // Show full-screen punishment overlay.
       const punishmentOverlay = document.getElementById("ted-punishment-overlay");
-      document.getElementById("ted-punishment-message").innerText = "You spent too long on the call. TED took a loan of $" + loss + " (20% of your money) that will never be repaid. The day is over.";
+      punishmentOverlay.innerHTML = `
+        <div class="overlay-content">
+          <h2>TED's Punishment</h2>
+          <p id="ted-punishment-message">You spent too long on the call. TED took a loan of $${loss} (20% of your money) that will never be repaid. The day is over.</p>
+          <button class="button" onclick="dismissTedPunishment()">Dismiss</button>
+        </div>
+      `;
       punishmentOverlay.style.display = "block";
     }
     function dismissTedPunishment() {
