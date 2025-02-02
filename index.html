@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Drug Trader Game</title>
+  <style>
+    /* Global Styles */
+    body {
+      background-color: #000;
+      color: #A3FF00;
+      font-family: 'Courier New', Courier, monospace;
+      margin: 0;
+      padding: 10px;
+      font-size: 15px;
+    }
+    #game-container {
+      max-width: 900px;
+      margin: auto;
+      border: 2px solid #00FF00;
+      padding: 15px;
+      background-color: #111;
+      position: relative;
+      z-index: 1;
+    }
+    h1, h2, h3 {
+      color: #00FF00;
+      text-align: center;
+    }
+    .section {
+      margin-bottom: 15px;
+      border: 1px solid #00FF00;
+      padding: 10px;
+      background-color: #222;
+    }
+    .button {
+      background-color: #333;
+      color: #A3FF00;
+      border: 1px solid #00FF00;
+      padding: 8px 12px;
+      margin: 5px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+    .button:hover:not(:disabled) {
+      background-color: #444;
+    }
+    .button:disabled {
+      background-color: #555;
+      color: #777;
+      border-color: #777;
+      cursor: not-allowed;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      color: #A3FF00;
+    }
+    table, th, td {
+      border: 1px solid #00FF00;
+    }
+    th, td {
+      padding: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+    /* Location Panel */
+    #location-panel {
+      text-align: center;
+      padding: 15px;
+      border: 2px solid #00FF00;
+      margin-top: 10px;
+      background-color: #222;
+    }
+    /* Full-screen TED Call Overlay */
+    #ted-overlay, 
+    /* Full-screen TED Punishment Overlay (identical styling) */
+    #ted-punishment-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.95);
+      color: #FF00FF;
+      display: none;
+      z-index: 100;
+      text-align: center;
+      padding-top: 20%;
+      font-size: 20px;
+    }
+    #ted-overlay .overlay-content,
+    #ted-punishment-overlay .overlay-content {
+      margin: auto;
+      width: 80%;
+    }
+    #ted-overlay .overlay-content p,
+    #ted-punishment-overlay .overlay-content p {
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <h1>Drug Trader Game</h1>
+    <!-- Stats & Profit Tracker -->
+    <div id="game-stats" class="section"></div>
+    <!-- Inventory (Sell Options) -->
+    <div id="inventory-display" class="section"></div>
+    <!-- Messages Panel -->
+    <div id="game-messages" class="section"></div>
+    <!-- Market Section -->
+    <div id="game-output" class="section"></div>
+    <!-- Controls (Events, End Day, etc.) -->
+    <div id="game-controls" class="section"></div>
+    <!-- Next Destination Panel -->
+    <div id="location-panel"></div>
+  </div>
+
+  <!-- Full-screen TED Call Overlay -->
+  <div id="ted-overlay">
+    <div class="overlay-content">
+      <h2>TED is Calling!</h2>
+      <p id="ted-initial-text">Do you want to answer?</p>
+      <button class="button" onclick="answerTedCall()">Answer</button>
+      <button class="button" onclick="declineTedCall()">Decline</button>
+    </div>
+  </div>
+
+  <!-- Full-screen TED Punishment Overlay -->
+  <div id="ted-punishment-overlay">
+    <div class="overlay-content">
+      <h2>TED's Punishment</h2>
+      <p id="ted-punishment-message"></p>
+      <button class="button" onclick="dismissTedPunishment()">Dismiss</button>
+    </div>
+  </div>
+
+  <script>
+    // ------------------ Global Game State ------------------
+    let currentDay = 1;
+    const maxDays = 30;
+    let money = 1000;
+    let health = 100;
+    let inventory = {};  // e.g., { "mdma": 3, "pot": 5 }
+    let inventoryCapacity = 100;
+    let hasKnife = false;
+    let hasJacket = false;
+    let realizedProfit = 0;
+    let purchaseHistory = {};  // { drug: { count, totalCost } }
+    // This variable will hold the one drug that is NOT available for trade today.
+    let dailyRemovedDrug = null;
+
+    // ------------------ Drugs ------------------
+    // The complete list of drugs.
+    const drugs = ["mdma", "coke", "heroin", "ket", "pot", "shrooms", "lsd", "fent", "chinese cigs", "vapes", "speed", "vallies"];
+
+    // ------------------ Locations ------------------
+    // (Locations still affect prices.)
+    const locations = ["Nowra", "Dapto", "Cringila", "Bellambi", "Wombarra", "Sutherland"];
+    let currentLocation = locations[0];
+
+    // ------------------ Prices ------------------
+    // Prices are generated per day, per location, per drug.
+    let prices = {};
+    for (let day = 1; day <= maxDays; day++) {
+      prices[day] = {};
+      locations.forEach(loc => {
+        prices[day][loc] = {};
+        drugs.forEach(drug => {
+          prices[day][loc][drug] = Math.floor(Math.random() * 91) + 10;
+        });
+      });
+    }
+
+    // ------------------ Price Events (More Volatile) ------------------
+    const priceEvents = [
+      { message: "Rival dealer busted! The price of KET skyrockets!", drug: "ket", multiplier: 2.5 },
+      { message: "A new batch of Chinese Cigs has arrived! Prices drop dramatically!", drug: "chinese cigs", multiplier: 0.4 },
+      { message: "Pot shortage! Prices for POT surge dramatically!", drug: "pot", multiplier: 2.2 },
+      { message: "Oversupply! POT prices plummet!", drug: "pot", multiplier: 0.5 },
+      { message: "LSD is in high demand! Prices surge!", drug: "lsd", multiplier: 2.0 },
+      { message: "Heroin is flooding the market! Prices crash!", drug: "heroin", multiplier: 0.5 }
+    ];
+    function triggerPriceEvent() {
+      if (Math.random() < 0.2) {
+        const event = priceEvents[Math.floor(Math.random() * priceEvents.length)];
+        let basePrice = prices[currentDay][currentLocation][event.drug];
+        let newPrice = Math.max(1, Math.floor(basePrice * event.multiplier));
+        prices[currentDay][currentLocation][event.drug] = newPrice;
+        addMessage(event.message + " New price for " + event.drug.toUpperCase() + ": $" + newPrice);
+      }
+    }
+
+    // ------------------ Daily Removed Drug ------------------
+    // At the start of each day, one random drug (from the full list) will be removed (not tradable).
+    function chooseDailyRemovedDrug() {
+      dailyRemovedDrug = drugs[Math.floor(Math.random() * drugs.length)];
+      addMessage("Notice: " + dailyRemovedDrug.toUpperCase() + " is not available for trade today.");
+    }
+    // Helper: returns true if the drug is tradable today.
+    function isAccepted(drug) {
+      return drug !== dailyRemovedDrug;
+    }
+
+    // ------------------ Inventory Loss Events ------------------
+    const inventoryLossEvents = [
+      { name: "Darcy", drug: "mdma", message: "DARCY dropped all the MDMA down the sink!" },
+      { name: "Chuck", drug: "coke", message: "CHUCK spilled your COCAINE all over the floor!" },
+      { name: "Hawkie", drug: "heroin", message: "HAWKIE accidentally knocked over your HEROIN stash!" },
+      { name: "Kerry", drug: "ket", message: "KERRY misplaced a portion of your KET!" },
+      { name: "Dago", drug: "pot", message: "DAGO left your POT out in the rain, losing half!" },
+      { name: "Philpot", drug: "lsd", message: "PHILPOT's antics caused you to lose a chunk of your LSD!" },
+      { name: "Rob", drug: "fent", message: "ROB's reckless behavior led to a spill of your FENT!" },
+      { name: "Joel", drug: "chinese cigs", message: "JOEL's carelessness resulted in a loss of your CHINESE CIGS!" }
+    ];
+    function renderInventoryLossEvent(event) {
+      clearMessages();
+      let currentQty = inventory[event.drug] || 0;
+      let lost = Math.ceil(currentQty * 0.5);
+      inventory[event.drug] -= lost;
+      if (inventory[event.drug] <= 0) { delete inventory[event.drug]; }
+      addMessage(event.message + " You lost " + lost + " unit(s) of " + event.drug.toUpperCase() + ".");
+      renderAll();
+    }
+
+    // ------------------ TED Full-Screen Overlay ------------------
+    // TED Call Overlay
+    function triggerTedOverlay() {
+      const overlay = document.getElementById("ted-overlay");
+      // Reset overlay to initial prompt.
+      document.querySelector("#ted-overlay .overlay-content").innerHTML = `
+        <h2>TED is Calling!</h2>
+        <p id="ted-initial-text">Do you want to answer?</p>
+        <button class="button" onclick="answerTedCall()">Answer</button>
+        <button class="button" onclick="declineTedCall()">Decline</button>
+      `;
+      overlay.style.display = "block";
+    }
+    function answerTedCall() {
+      const overlay = document.getElementById("ted-overlay");
+      // Replace content with TED's message and a Hang Up button.
+      document.querySelector("#ted-overlay .overlay-content").innerHTML = `
+        <h2>TED is Speaking!</h2>
+        <p id="ted-message"></p>
+        <button class="button" onclick="hangUpTed()">Hang Up</button>
+      `;
+      const tedMessages = [
+        "Hey, are you building a boat?",
+        "Yo, cleaning a boat?",
+        "Living on a boat, maybe?",
+        "Heading to the tip?",
+        "Need drugs? Need money?",
+        "What about a boat, my friend?"
+      ];
+      const randomMsg = tedMessages[Math.floor(Math.random() * tedMessages.length)];
+      document.getElementById("ted-message").innerText = randomMsg;
+    }
+    function hangUpTed() {
+      const overlay = document.getElementById("ted-overlay");
+      overlay.style.display = "none";
+      const loss = Math.floor(money * 0.2);
+      money -= loss;
+      // Instead of adding a message to the game messages panel, show a full-screen punishment overlay.
+      const punishmentOverlay = document.getElementById("ted-punishment-overlay");
+      document.getElementById("ted-punishment-message").innerText = "You spent too long on the call. TED took a loan of $" + loss + " (20% of your money) that will never be repaid. The day is over.";
+      punishmentOverlay.style.display = "block";
+    }
+    function dismissTedPunishment() {
+      const punishmentOverlay = document.getElementById("ted-punishment-overlay");
+      punishmentOverlay.style.display = "none";
+      renderLocationChoice();
+    }
+    function declineTedCall() {
+      const overlay = document.getElementById("ted-overlay");
+      overlay.style.display = "none";
+      addMessage("You declined TED's call and continue trading today.");
+      renderAll();
+    }
+
+    // ------------------ Utility Functions ------------------
+    function inventoryUsed() {
+      let used = 0;
+      for (let drug in inventory) { used += inventory[drug]; }
+      return used;
+    }
+    function availableCapacity() {
+      return inventoryCapacity - inventoryUsed();
+    }
+    function addMessage(msg) {
+      document.getElementById("game-messages").innerHTML += `<p>${msg}</p>`;
+    }
+    function clearMessages() {
+      document.getElementById("game-messages").innerHTML = "";
+    }
+
+    // ------------------ Stats & Profit Tracker ------------------
+    function renderStats() {
+      let statsHTML = `<p><strong>Day:</strong> ${currentDay} / ${maxDays} | <strong>Location:</strong> ${currentLocation} | <strong>Money:</strong> $${money} | <strong>Health:</strong> ${health}</p>`;
+      statsHTML += `<p><strong>Inventory:</strong> ${inventoryUsed()} / ${inventoryCapacity} | <strong>Realized Profit:</strong> $${realizedProfit}</p>`;
+      statsHTML += "<h3>Profit Tracker</h3>";
+      statsHTML += "<table><tr><th>Drug</th><th>Units Bought</th><th>Total Spent</th><th>Avg Cost</th></tr>";
+      for (let drug in purchaseHistory) {
+        if (purchaseHistory[drug].count > 0) {
+          let avg = (purchaseHistory[drug].totalCost / purchaseHistory[drug].count).toFixed(2);
+          statsHTML += `<tr><td>${drug.toUpperCase()}</td><td>${purchaseHistory[drug].count}</td><td>$${purchaseHistory[drug].totalCost}</td><td>$${avg}</td></tr>`;
+        }
+      }
+      statsHTML += "</table>";
+      document.getElementById("game-stats").innerHTML = statsHTML;
+    }
+
+    // ------------------ Inventory Rendering ------------------
+    function renderInventory() {
+      let invHTML = "<h2>Your Inventory (Sell Options)</h2>";
+      if (Object.keys(inventory).length === 0) {
+        invHTML += "<p>You have no drugs in your inventory.</p>";
+      } else {
+        invHTML += "<table><tr><th>Drug</th><th>Units</th><th>Avg Cost</th><th>Sell Options</th></tr>";
+        for (let drug in inventory) {
+          let count = inventory[drug];
+          let avgCost = purchaseHistory[drug] ? (purchaseHistory[drug].totalCost / purchaseHistory[drug].count).toFixed(2) : "N/A";
+          // If the drug is removed today, mark sell options as disabled.
+          let accepted = isAccepted(drug);
+          let price = prices[currentDay][currentLocation][drug];
+          let salePrice = accepted ? price : Math.floor(price / 2);
+          let note = accepted ? "Normal" : "Not Accepted Today";
+          invHTML += `<tr><td>${drug.toUpperCase()}</td><td>${count}</td><td>$${avgCost}</td><td>$${salePrice} - ${note} `;
+          [1, 5, 10, 20].forEach(qty => {
+            if (count >= qty) {
+              invHTML += `<button class="button" ${!accepted ? "disabled" : ""} onclick="sellDrug('${drug}', ${qty})">Sell ${qty}</button>`;
+            } else {
+              invHTML += `<button class="button" disabled>Sell ${qty}</button>`;
+            }
+          });
+          invHTML += `<button class="button" ${!accepted ? "disabled" : ""} onclick="sellDrug('${drug}', ${count})">Sell All</button>`;
+          invHTML += `</td></tr>`;
+        }
+        invHTML += "</table>";
+      }
+      document.getElementById("inventory-display").innerHTML = invHTML;
+    }
+
+    // ------------------ Market Rendering ------------------
+    function renderMarket() {
+      let marketHTML = `<h2>Market at ${currentLocation}</h2>`;
+      marketHTML += "<table><tr><th>Drug</th><th>Price</th><th>Buy Options</th></tr>";
+      // List ALL drugs except the one that is removed today.
+      drugs.forEach(drug => {
+        if (!isAccepted(drug)) return; // Skip the daily removed drug.
+        let price = prices[currentDay][currentLocation][drug];
+        marketHTML += `<tr><td>${drug.toUpperCase()}</td><td>$${price}</td><td>`;
+        [1, 5, 10, 20, 50].forEach(qty => {
+          let cost = price * qty;
+          let disabled = (money < cost || availableCapacity() < qty) ? "disabled" : "";
+          marketHTML += `<button class="button" ${disabled} onclick="buyDrug('${drug}', ${qty})">Buy ${qty}</button>`;
+        });
+        let maxQty = Math.min(Math.floor(money / price), availableCapacity());
+        let disabledMax = (maxQty < 1) ? "disabled" : "";
+        marketHTML += `<button class="button" ${disabledMax} onclick="buyDrug('${drug}', ${maxQty})">Buy Max (${maxQty})</button>`;
+        marketHTML += `</td></tr>`;
+      });
+      marketHTML += "</table>";
+      document.getElementById("game-output").innerHTML = marketHTML;
+    }
+
+    // ------------------ Buy & Sell Functions ------------------
+    function buyDrug(drug, quantity) {
+      // Disallow buying if the drug is the one removed today.
+      if (!isAccepted(drug)) {
+        addMessage("Sorry, " + drug.toUpperCase() + " is not available to buy today.");
+        return;
+      }
+      let price = prices[currentDay][currentLocation][drug];
+      let cost = price * quantity;
+      if (money < cost || availableCapacity() < quantity) {
+        addMessage("Not enough money or inventory space to buy " + quantity + " " + drug.toUpperCase());
+        return;
+      }
+      money -= cost;
+      inventory[drug] = (inventory[drug] || 0) + quantity;
+      if (!purchaseHistory[drug]) { purchaseHistory[drug] = { count: 0, totalCost: 0 }; }
+      purchaseHistory[drug].count += quantity;
+      purchaseHistory[drug].totalCost += cost;
+      addMessage("Bought " + quantity + " " + drug.toUpperCase() + " for $" + cost);
+      renderAll();
+    }
+    function sellDrug(drug, quantity) {
+      // Disallow selling if the drug is not accepted today.
+      if (!isAccepted(drug)) {
+        addMessage("Sorry, " + drug.toUpperCase() + " is not accepted for sale today.");
+        return;
+      }
+      if (!inventory[drug] || inventory[drug] < quantity) {
+        addMessage("Not enough " + drug.toUpperCase() + " to sell.");
+        return;
+      }
+      let price = prices[currentDay][currentLocation][drug];
+      let revenue = price * quantity;
+      money += revenue;
+      inventory[drug] -= quantity;
+      if (inventory[drug] <= 0) { delete inventory[drug]; }
+      if (purchaseHistory[drug]) {
+        let avgCost = purchaseHistory[drug].totalCost / purchaseHistory[drug].count;
+        let costRemoved = avgCost * quantity;
+        purchaseHistory[drug].count -= quantity;
+        purchaseHistory[drug].totalCost -= costRemoved;
+        let profitSale = revenue - costRemoved;
+        realizedProfit += profitSale;
+        addMessage("Sold " + quantity + " " + drug.toUpperCase() + " for $" + revenue + ". Profit: $" + profitSale.toFixed(2));
+      }
+      renderAll();
+    }
+
+    // ------------------ Location Selection Panel ------------------
+    function renderLocationChoice() {
+      clearMessages();
+      document.getElementById("game-controls").innerHTML = "";
+      let locHTML = "<h2>Next Destination</h2>";
+      locHTML += "<p>Please choose your next location (you cannot stay in the same place two days in a row).</p>";
+      locations.forEach(loc => {
+        if (loc === currentLocation) {
+          locHTML += `<button class="button" disabled style="margin: 5px;">${loc} (Current)</button>`;
+        } else {
+          locHTML += `<button class="button" style="margin: 5px;" onclick="chooseLocation('${loc}')">${loc}</button>`;
+        }
+      });
+      document.getElementById("location-panel").innerHTML = locHTML;
+    }
+    function chooseLocation(loc) {
+      currentLocation = loc;
+      document.getElementById("location-panel").innerHTML = "";
+      if (currentDay < maxDays) {
+        currentDay++;
+        clearMessages();
+        addMessage("Day " + currentDay + " begins at " + currentLocation);
+        triggerPriceEvent();
+        // Choose one random drug to be removed today.
+        chooseDailyRemovedDrug();
+        // From Day 2 onward, 80% chance to receive a TED call at the start of the day.
+        if (currentDay > 1 && Math.random() < 0.8) {
+          triggerTedOverlay();
+        } else {
+          renderAll();
+        }
+      } else {
+        endGame();
+      }
+    }
+
+    // ------------------ Random Daily Events (when ending the day) ------------------
+    function triggerRandomDailyEvents() {
+      clearMessages();
+      // (Other random events can be added here.)
+      renderLocationChoice();
+    }
+    function renderCopsEvent() {
+      clearMessages();
+      let eventHTML = "<h2>The cops are chasing you!</h2>";
+      eventHTML += "<p>Do you want to run or fight?</p>";
+      eventHTML += `<button class="button" onclick="handleCops('run')">Run</button>`;
+      eventHTML += `<button class="button" onclick="handleCops('fight')">Fight</button>`;
+      document.getElementById("game-controls").innerHTML = eventHTML;
+    }
+    function handleCops(action) {
+      clearMessages();
+      if (action === 'fight') {
+        let damage = hasKnife ? (Math.floor(Math.random() * 11) + 5) : (Math.floor(Math.random() * 16) + 15);
+        addMessage("You chose to fight and took " + damage + " damage.");
+        health -= damage;
+        if (health < 0) health = 0;
+      } else if (action === 'run') {
+        if (Math.random() < 0.5) {
+          addMessage("While running, you lost some goods!");
+          let invDrugs = Object.keys(inventory);
+          if (invDrugs.length > 0) {
+            let randIndex = Math.floor(Math.random() * invDrugs.length);
+            let drug = invDrugs[randIndex];
+            inventory[drug]--;
+            if (inventory[drug] <= 0) { delete inventory[drug]; }
+          }
+        } else {
+          addMessage("You managed to escape without any losses!");
+        }
+      }
+      renderAll();
+    }
+    function renderKnifeOffer() {
+      clearMessages();
+      let knifePrice = 200;
+      let offerHTML = "<h2>Opportunity: Knife Offer</h2>";
+      offerHTML += `<p>A shady dealer offers you a knife for $${knifePrice}.</p>`;
+      let disabled = money < knifePrice ? "disabled" : "";
+      offerHTML += `<button class="button" ${disabled} onclick="buyKnife(${knifePrice})">Buy Knife</button>`;
+      offerHTML += `<button class="button" onclick="declineKnife()">Decline</button>`;
+      document.getElementById("game-controls").innerHTML = offerHTML;
+    }
+    function buyKnife(price) {
+      if (money < price) {
+        addMessage("Not enough money for the knife!");
+        renderAll();
+        return;
+      }
+      money -= price;
+      hasKnife = true;
+      addMessage("You bought a knife!");
+      renderAll();
+    }
+    function declineKnife() {
+      addMessage("You declined the knife offer.");
+      renderAll();
+    }
+    function renderJacketOffer() {
+      clearMessages();
+      let jacketPrice = 300;
+      let offerHTML = "<h2>Opportunity: Jacket Offer</h2>";
+      offerHTML += `<p>A vendor offers you a jacket for $${jacketPrice} that doubles your inventory space.</p>`;
+      let disabled = money < jacketPrice ? "disabled" : "";
+      offerHTML += `<button class="button" ${disabled} onclick="buyJacket(${jacketPrice})">Buy Jacket</button>`;
+      offerHTML += `<button class="button" onclick="declineJacket()">Decline</button>`;
+      document.getElementById("game-controls").innerHTML = offerHTML;
+    }
+    function buyJacket(price) {
+      if (money < price) {
+        addMessage("Not enough money for the jacket!");
+        renderAll();
+        return;
+      }
+      money -= price;
+      hasJacket = true;
+      inventoryCapacity *= 2;
+      addMessage("You bought a jacket! Inventory capacity doubled.");
+      renderAll();
+    }
+    function declineJacket() {
+      addMessage("You declined the jacket offer.");
+      renderAll();
+    }
+
+    // ------------------ End Day Button ------------------
+    function addEndDayButton() {
+      let btnHTML = `<button class="button" onclick="triggerRandomDailyEvents()">Catch the Train and End the Day</button>`;
+      document.getElementById("game-controls").innerHTML = btnHTML;
+      document.getElementById("location-panel").innerHTML = "";
+    }
+    // ------------------ Render All ------------------
+    function renderAll() {
+      renderStats();
+      renderInventory();
+      renderMarket();
+      addEndDayButton();
+    }
+    // ------------------ End Game ------------------
+    function endGame() {
+      clearMessages();
+      document.getElementById("game-controls").innerHTML = "";
+      document.getElementById("location-panel").innerHTML = "";
+      let finalHTML = `<h2>Game Over!</h2>`;
+      finalHTML += `<p>You finished with $${money}.</p>`;
+      if (health <= 0) { finalHTML += `<p>You ran out of health!</p>`; }
+      document.getElementById("game-output").innerHTML = finalHTML;
+      renderStats();
+    }
+    // ------------------ Initialization ------------------
+    renderAll();
+  </script>
+</body>
+</html>
